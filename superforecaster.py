@@ -167,6 +167,9 @@ class EnsembleFutureEvalBot(SummerTemplateBot2026):
 
 async def run(mode: Literal["tournament", "metaculus_cup", "test_questions"]) -> None:
     publish = os.getenv("PUBLISH_TO_METACULUS", "false").lower() == "true"
+    max_questions = int(os.getenv("MAX_QUESTIONS_PER_RUN", "1"))
+    if max_questions < 1:
+        raise ValueError("MAX_QUESTIONS_PER_RUN must be at least 1")
     print_startup_banner(mode, will_publish=publish)
     bot = EnsembleFutureEvalBot(
         research_reports_per_question=1,
@@ -191,25 +194,38 @@ async def run(mode: Literal["tournament", "metaculus_cup", "test_questions"]) ->
     )
     client = MetaculusClient()
     if mode == "tournament":
-        reports = await bot.forecast_on_tournament(
-            client.CURRENT_AI_COMPETITION_ID, return_exceptions=True
+        questions = client.get_all_open_questions_from_tournament(
+            client.CURRENT_AI_COMPETITION_ID
         )
-        reports += await bot.forecast_on_tournament(
-            client.CURRENT_MINIBENCH_ID, return_exceptions=True
+        questions += client.get_all_open_questions_from_tournament(
+            client.CURRENT_MINIBENCH_ID
         )
         url = "https://www.metaculus.com/tournament/fall-futureeval-2026/"
     elif mode == "metaculus_cup":
         bot.skip_previously_forecasted_questions = False
-        reports = await bot.forecast_on_tournament(
-            client.CURRENT_METACULUS_CUP_ID, return_exceptions=True
+        questions = client.get_all_open_questions_from_tournament(
+            client.CURRENT_METACULUS_CUP_ID
         )
         url = "https://www.metaculus.com/tournament/"
     else:
         bot.skip_previously_forecasted_questions = False
-        reports = await bot.forecast_on_tournament(
-            "bot-testing-area", return_exceptions=True
+        questions = client.get_all_open_questions_from_tournament(
+            "bot-testing-area"
         )
         url = "https://www.metaculus.com/tournament/bot-testing-area/"
+
+    if bot.skip_previously_forecasted_questions:
+        questions = [question for question in questions if not question.already_forecasted]
+    selected_questions = questions[:max_questions]
+    logger.info(
+        "Selected %d of %d eligible question(s); MAX_QUESTIONS_PER_RUN=%d",
+        len(selected_questions),
+        len(questions),
+        max_questions,
+    )
+    reports = await bot.forecast_questions(
+        selected_questions, return_exceptions=True
+    )
     bot.log_report_summary(reports)
     print_run_summary_banner(reports, will_publish=publish, tournament_url=url)
 

@@ -14,6 +14,7 @@ each saved report contains every component estimate and the final calculation.
 Safety defaults:
 
 - `PUBLISH_TO_METACULUS=false`, so forecasts are generated but not submitted.
+- `MAX_QUESTIONS_PER_RUN=1`, so a first live run cannot process the whole queue.
 - Scheduled GitHub workflows remain idle until the repository variable
   `BOT_ENABLED` is set to `true`.
 - The manual test workflow always stays in dry-run mode.
@@ -258,3 +259,15 @@ You will get tags in your response, including:
 <think> </think>
 <asknews_search> </asknews_search>
 <final_response> </final_response>
+
+These tags are likely useful for extracting the pieces that you need for your pipeline. For example, if you don't want to include all the thinking/searching, you could just extract <final_response> </final_response>
+
+
+## Integrations
+
+The **[integrations/](integrations/)** folder contains example scripts that integrate third-party tools with the bot template. 
+
+See the [integrations README](integrations/README.md) for available integrations and how to add your own.
+
+## Ideas for bot improvements
+You can find some ideas of what you can do to improve this template by taking a look at what other bots have done [here](https://www.metaculus.com/notebooks/43497/what-are-other-bots-doing/). You can also look at research done by Metaculus and the field in the [research section](https://www.metaculus.com/notebooks/38928/ai-benchmark-resources/#research-reports-and-overview-of-the-field) of the bot resources page. Asking an LLM to read through everything and give ideas may be a decent place to start. Please try to do something new, or something that is a spinoff (or better implementation) of what others have done. We don't want to test the same idea multiple times.
