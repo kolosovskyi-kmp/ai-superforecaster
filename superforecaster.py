@@ -187,7 +187,7 @@ async def run(mode: Literal["tournament", "metaculus_cup", "test_questions"]) ->
                 allowed_tries=2,
             ),
             "researcher": os.getenv(
-                "RESEARCHER_MODEL", "openrouter/perplexity/sonar"
+                "RESEARCHER_MODEL", "openrouter/openai/gpt-5-mini"
             ),
             "parser": os.getenv("PARSER_MODEL", "openrouter/openai/gpt-5-mini"),
         },
