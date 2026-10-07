@@ -6,7 +6,7 @@ on:
       max_questions:
         description: "Maximum questions to process"
         required: true
-        default: "1"
+        default: "5"
   schedule:
     - cron: "7,27,47 * * * *" # every 20 min, offset off the hour. Make sure to skip already-forecasted questions!
 
@@ -51,7 +51,7 @@ jobs:
         env:
           METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }} # replace this with the name of the variable under which you stored your own Metaculus token
           PUBLISH_TO_METACULUS: ${{ vars.PUBLISH_TO_METACULUS || 'false' }}
-          MAX_QUESTIONS_PER_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.max_questions || vars.MAX_QUESTIONS_PER_RUN || '1' }}
+          MAX_QUESTIONS_PER_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.max_questions || vars.MAX_QUESTIONS_PER_RUN || '5' }}
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
