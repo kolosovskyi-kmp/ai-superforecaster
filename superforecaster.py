@@ -195,7 +195,7 @@ async def run(mode: Literal["tournament", "metaculus_cup", "test_questions"]) ->
     client = MetaculusClient()
     if mode == "tournament":
         questions = client.get_all_open_questions_from_tournament(
-            client.CURRENT_AI_COMPETITION_ID
+            "fall-futureeval-2026"
         )
         questions += client.get_all_open_questions_from_tournament(
             client.CURRENT_MINIBENCH_ID
