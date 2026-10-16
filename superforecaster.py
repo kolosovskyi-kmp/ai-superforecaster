@@ -17,14 +17,12 @@ from typing import Literal
 
 import dotenv
 from forecasting_tools import (
-    BinaryPrediction,
     BinaryQuestion,
     GeneralLlm,
     MetaculusClient,
     MetaculusQuestion,
     ReasonedPrediction,
     clean_indents,
-    structure_output,
 )
 
 from bot_helpers import (
@@ -34,6 +32,7 @@ from bot_helpers import (
     silence_noisy_dependencies,
 )
 from main import SummerTemplateBot2026
+from probability_parsing import parse_final_probability
 from web_research import DEFAULT_RESEARCHER_MODEL, search_web
 
 dotenv.load_dotenv()
@@ -162,16 +161,16 @@ class EnsembleFutureEvalBot(SummerTemplateBot2026):
             strongest counterargument, and what would change your estimate. Avoid 0% and
             100% unless the outcome is logically settled.
             End with exactly: Probability: ZZ%
+            Use one standalone final line with a single percentage; decimals are
+            allowed. Do not give a range or add text after that final line.
             """
         )
         reasoning = await self.get_llm("default", "llm").invoke(prompt)
-        parsed: BinaryPrediction = await structure_output(
-            reasoning,
-            BinaryPrediction,
-            model=self.get_llm("parser", "llm"),
-            num_validation_samples=self._structure_output_validation_samples,
+        logger.info(
+            "Binary role %s reasoning for URL %s:\n%s",
+            role.name, question.page_url, reasoning,
         )
-        probability = min(0.99, max(0.01, parsed.prediction_in_decimal))
+        probability = min(0.99, max(0.01, parse_final_probability(reasoning)))
         return role, probability, reasoning
 
     async def _run_forecast_on_binary(

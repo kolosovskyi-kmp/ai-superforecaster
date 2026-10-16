@@ -14,6 +14,7 @@ from bot_helpers import (
     print_startup_banner,
     silence_noisy_dependencies,
 )
+from probability_parsing import parse_final_probability
 
 silence_noisy_dependencies()
 
@@ -34,7 +35,6 @@ from forecasting_tools import (
     ConditionalPrediction,
     PredictionTypes,
     PredictionAffirmed,
-    BinaryPrediction,
     PredictedOptionList,
     ReasonedPrediction,
     SmartSearcher,
@@ -219,6 +219,8 @@ class SummerTemplateBot2026(ForecastBot):
             {self._get_conditional_disclaimer_if_necessary(question)}
 
             The last thing you write is your final answer as: "Probability: ZZ%", 0-100
+            Use one standalone final line with a single percentage; decimals are
+            allowed. Do not give a range or add text after that final line.
             """
         )
 
@@ -231,13 +233,7 @@ class SummerTemplateBot2026(ForecastBot):
     ) -> ReasonedPrediction[float]:
         reasoning = await self.get_llm("default", "llm").invoke(prompt)
         logger.info(f"Reasoning for URL {question.page_url}: {reasoning}")
-        binary_prediction: BinaryPrediction = await structure_output(
-            reasoning,
-            BinaryPrediction,
-            model=self.get_llm("parser", "llm"),
-            num_validation_samples=self._structure_output_validation_samples,
-        )
-        decimal_pred = max(0.01, min(0.99, binary_prediction.prediction_in_decimal))
+        decimal_pred = max(0.01, min(0.99, parse_final_probability(reasoning)))
 
         logger.info(
             f"Forecasted URL {question.page_url} with prediction: {decimal_pred}."
@@ -748,3 +744,4 @@ if __name__ == "__main__":
         will_publish=publish_to_metaculus,
         tournament_url=TOURNAMENT_URLS.get(run_mode),
     )
+
