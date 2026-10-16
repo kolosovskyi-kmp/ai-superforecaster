@@ -22,11 +22,27 @@ Safety defaults:
 Required GitHub repository secrets:
 
 - `METACULUS_TOKEN`
-- `OPENROUTER_API_KEY` (or change the three model settings to another provider)
+- `OPENROUTER_API_KEY`
+
+Research for **all question types** uses an explicit OpenRouter `openrouter:web_search`
+server tool with `openai/gpt-5-mini`, routed only to OpenAI. This works within the
+sponsored key's OpenAI provider allowance and needs no separate search key. A model
+name alone does not activate search. The bot rejects empty/truncated research,
+responses without API-supplied URL citations, and responses reporting zero searches.
+It never falls back to ungrounded research after a search failure.
+
+API-reported research charges, generation IDs, and source URLs are saved in
+`forecast_reports/research_usage.jsonl` (included in the existing report artifact).
+These charges cover research only. Forecasting-tools' estimated run total does
+**not** include this direct API call; missing cost data is recorded as `null`, not zero.
+Run the offline search checks with
+`python -m unittest discover -s tests -p test_web_research.py -v`.
 
 Recommended rollout:
 
-1. Run **Actions → Test Bot** and inspect the uploaded logs/reports.
+1. Start a **new** run via **Actions → Test Bot → Run workflow**, selecting `main`
+   and one question. Re-running an old run uses its old commit. Inspect the uploaded
+   logs/reports for `Sources returned by the search API` and research usage.
 2. Run locally with `poetry run python superforecaster.py --mode test_questions`.
 3. When the output is satisfactory, set repository variable
    `PUBLISH_TO_METACULUS=true` and manually run the tournament workflow once.
@@ -271,3 +287,4 @@ See the [integrations README](integrations/README.md) for available integrations
 
 ## Ideas for bot improvements
 You can find some ideas of what you can do to improve this template by taking a look at what other bots have done [here](https://www.metaculus.com/notebooks/43497/what-are-other-bots-doing/). You can also look at research done by Metaculus and the field in the [research section](https://www.metaculus.com/notebooks/38928/ai-benchmark-resources/#research-reports-and-overview-of-the-field) of the bot resources page. Asking an LLM to read through everything and give ideas may be a decent place to start. Please try to do something new, or something that is a spinoff (or better implementation) of what others have done. We don't want to test the same idea multiple times.
+
