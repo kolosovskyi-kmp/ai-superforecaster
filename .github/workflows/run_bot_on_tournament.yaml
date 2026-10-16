@@ -4,66 +4,72 @@ on:
   workflow_dispatch:
     inputs:
       max_questions:
-        description: "Maximum questions to process"
+        description: Maximum questions to process
         required: true
-        default: "5"
+        default: '5'
+      trigger_source:
+        description: Trigger origin (external clock respects BOT_ENABLED)
+        type: choice
+        options: [manual, external-clock]
+        default: manual
   schedule:
-    - cron: "7,27,47 * * * *" # every 20 min, offset off the hour. Make sure to skip already-forecasted questions!
+    - cron: '7,27,47 * * * *'
 
-# Add concurrency group to prevent parallel runs
+permissions:
+  contents: read
+
 concurrency:
-  group: ${{ github.workflow }}
+  group: futureeval-publishing
   cancel-in-progress: false
 
-
-# Daily job to run the simple forecast bot
 jobs:
   forecast_job:
-    if: vars.BOT_ENABLED == 'true' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest # determines the machine that will run the job - keep as is
-    steps: # sets up the steps that will be run in order
-      # setup repository with all necessary dependencies - keep as is
-      - name: Check out repository
-        uses: actions/checkout@v4
+    if: vars.BOT_ENABLED == 'true' || (github.event_name == 'workflow_dispatch' && inputs.trigger_source != 'external-clock')
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - name: Install poetry
-        uses: snok/install-poetry@v1
+          python-version: '3.11'
+      - name: Discover open questions and read remaining credit (no model calls)
+        id: coverage
+        run: python audit_bot.py --preflight
+        env:
+          METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BOT_AUDIT_OUTPUT: forecast_reports/coverage_before.json
+      - uses: snok/install-poetry@v1
+        if: steps.coverage.outputs.has_pending == 'true' && vars.PUBLISH_TO_METACULUS == 'true'
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
-      # Adding the below will make the workflow faster, but will mean you don't automatically get updates from forecasting-tools and other packages
-      # - name: Load cached venv
-      #   id: cached-poetry-dependencies
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: .venv
-      #     key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
-      - name: Install dependencies
+      - name: Install dependencies only when a forecast is needed
+        if: steps.coverage.outputs.has_pending == 'true' && vars.PUBLISH_TO_METACULUS == 'true'
         run: poetry install --no-interaction --no-root
       - name: Run bot
-        run: |
-          poetry run python superforecaster.py --mode tournament
-        # this reads the environment variables from the github repository.
-        # Store under Settings --> Secrets and variables --> Actions
+        if: steps.coverage.outputs.has_pending == 'true' && vars.PUBLISH_TO_METACULUS == 'true'
+        run: poetry run python superforecaster.py --mode tournament
         env:
-          METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }} # replace this with the name of the variable under which you stored your own Metaculus token
+          METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           PUBLISH_TO_METACULUS: ${{ vars.PUBLISH_TO_METACULUS || 'false' }}
           MAX_QUESTIONS_PER_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.max_questions || vars.MAX_QUESTIONS_PER_RUN || '5' }}
-          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
-          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Refresh coverage after submissions
+        if: always() && steps.coverage.outputs.has_pending == 'true' && vars.PUBLISH_TO_METACULUS == 'true'
+        run: python audit_bot.py --preflight
+        env:
+          METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          ASKNEWS_CLIENT_ID: ${{ secrets.ASKNEWS_CLIENT_ID }}
-          ASKNEWS_SECRET: ${{ secrets.ASKNEWS_SECRET }}
-      - name: Keep forecast reports
+          BOT_AUDIT_OUTPUT: forecast_reports/coverage_after.json
+      - name: Explain disabled publishing
+        if: vars.PUBLISH_TO_METACULUS != 'true'
+        run: echo 'Publishing is disabled. Coverage check only; no model calls.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: tournament-forecast-reports
           path: forecast_reports/
-          if-no-files-found: ignore
-          retention-days: 30
+          if-no-files-found: warn
+          retention-days: 90

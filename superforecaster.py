@@ -32,6 +32,7 @@ from bot_helpers import (
     silence_noisy_dependencies,
 )
 from main import SummerTemplateBot2026
+from operations import budget_delta, question_key, read_budget, save_run, select_questions
 from probability_parsing import parse_final_probability
 from web_research import DEFAULT_RESEARCHER_MODEL, search_web
 
@@ -211,7 +212,11 @@ class EnsembleFutureEvalBot(SummerTemplateBot2026):
 
 
 async def run(mode: Literal["tournament", "metaculus_cup", "test_questions"]) -> None:
+    if mode == "metaculus_cup":
+        raise ValueError("This sponsored runner is reserved for FutureEval and MiniBench")
     publish = os.getenv("PUBLISH_TO_METACULUS", "false").lower() == "true"
+    if mode == "test_questions" and publish:
+        raise ValueError("The testing area must use PUBLISH_TO_METACULUS=false")
     max_questions = int(os.getenv("MAX_QUESTIONS_PER_RUN", "1"))
     if max_questions < 1:
         raise ValueError("MAX_QUESTIONS_PER_RUN must be at least 1")
@@ -246,12 +251,6 @@ async def run(mode: Literal["tournament", "metaculus_cup", "test_questions"]) ->
             client.CURRENT_MINIBENCH_ID
         )
         url = "https://www.metaculus.com/tournament/fall-futureeval-2026/"
-    elif mode == "metaculus_cup":
-        bot.skip_previously_forecasted_questions = False
-        questions = client.get_all_open_questions_from_tournament(
-            client.CURRENT_METACULUS_CUP_ID
-        )
-        url = "https://www.metaculus.com/tournament/"
     else:
         bot.skip_previously_forecasted_questions = False
         questions = client.get_all_open_questions_from_tournament(
@@ -259,26 +258,86 @@ async def run(mode: Literal["tournament", "metaculus_cup", "test_questions"]) ->
         )
         url = "https://www.metaculus.com/tournament/bot-testing-area/"
 
-    if bot.skip_previously_forecasted_questions:
-        questions = [question for question in questions if not question.already_forecasted]
-    selected_questions = questions[:max_questions]
-    logger.info(
-        "Selected %d of %d eligible question(s); MAX_QUESTIONS_PER_RUN=%d",
-        len(selected_questions),
-        len(questions),
-        max_questions,
+    selected_questions, selection = select_questions(
+        questions, max_questions,
+        enforce_window=mode == "tournament",
+        skip_forecasted=bot.skip_previously_forecasted_questions,
     )
-    reports = await bot.forecast_questions(
-        selected_questions, return_exceptions=True
-    )
-    bot.log_report_summary(reports)
-    if selected_questions:
-        logger.info(
-            "Forecasting-tools cost estimates exclude direct web research. "
-            "See forecast_reports/research_usage.jsonl for API-reported research "
-            "costs; these are not the total cost of the run."
+    metrics = {
+        "started_utc": datetime.now(timezone.utc).isoformat(),
+        "commit": os.getenv("GITHUB_SHA"), "run_id": os.getenv("GITHUB_RUN_ID"),
+        "mode": mode, "publishing": publish, "selection": selection,
+        "strategy": "four-role-log-odds-v1",
+        "forecast_model": os.getenv("FORECAST_MODEL", "openrouter/openai/gpt-5-mini"),
+        "research_model": os.getenv("RESEARCHER_MODEL", DEFAULT_RESEARCHER_MODEL),
+        "parser_model": os.getenv("PARSER_MODEL", "openrouter/openai/gpt-5-mini"),
+        "calibration_shrinkage": float(os.getenv("CALIBRATION_SHRINKAGE", "0.85")),
+        "completed": 0, "failed": 0, "verified_posted": 0,
+        "status": "started",
+    }
+    logger.info("Question selection: %s", selection)
+    # Never preview live tournament predictions while publishing is disabled.
+    # Functional tests belong in bot-testing-area, including all non-binary types.
+    if mode == "tournament" and not publish:
+        metrics["status"] = "publishing_disabled_no_model_calls"
+        save_run(metrics)
+        logger.warning("Publishing disabled: tournament discovery only; no paid calls")
+        return
+    if not selected_questions:
+        metrics["status"] = "no_eligible_questions"
+        save_run(metrics)
+        print_run_summary_banner([], will_publish=publish, tournament_url=url)
+        return
+
+    metrics["budget_before"] = await asyncio.to_thread(read_budget)
+    save_run(metrics)  # Persist the selection even if forecasting raises.
+    reports = []
+    try:
+        reports = await bot.forecast_questions(selected_questions, return_exceptions=True)
+        metrics["failed"] = sum(isinstance(report, BaseException) for report in reports)
+        metrics["completed"] = len(reports) - metrics["failed"]
+        metrics["outcomes"] = [
+            {"question_key": list(question_key(question)),
+             "result": "failed" if isinstance(report, BaseException) else "report_completed",
+             "error_type": type(report).__name__ if isinstance(report, BaseException) else None}
+            for question, report in zip(selected_questions, reports)
+        ]
+        if publish:
+            # Verify API history after submission; a green Python process alone
+            # is insufficient evidence that Metaculus received the forecast.
+            posted_keys = set()
+            verification_errors = []
+            for post_id in dict.fromkeys(q.id_of_post for q in selected_questions):
+                try:
+                    fresh = await asyncio.to_thread(
+                        client.get_question_by_post_id, post_id,
+                        group_question_mode="unpack_subquestions",
+                    )
+                    for question in fresh if isinstance(fresh, list) else [fresh]:
+                        if question.already_forecasted:
+                            posted_keys.add(question_key(question))
+                except Exception as exc:
+                    verification_errors.append({"post_id": post_id, "error_type": type(exc).__name__})
+            metrics["verified_posted"] = sum(question_key(q) in posted_keys for q in selected_questions)
+            metrics["publication_verification_errors"] = verification_errors
+        metrics["status"] = "partial_failure" if metrics["failed"] else "completed"
+        if publish and metrics["verified_posted"] != len(selected_questions):
+            metrics["status"] = "publication_not_fully_verified"
+    except BaseException as exc:
+        metrics["status"] = "runner_failed"
+        metrics["runner_error_type"] = type(exc).__name__
+        raise
+    finally:
+        metrics["budget_after"] = await asyncio.to_thread(read_budget)
+        metrics["observed_account_charge_usd"] = budget_delta(
+            metrics["budget_before"], metrics["budget_after"]
         )
+        metrics["finished_utc"] = datetime.now(timezone.utc).isoformat()
+        save_run(metrics)
     print_run_summary_banner(reports, will_publish=publish, tournament_url=url)
+    bot.log_report_summary(reports)
+    if metrics["status"] == "publication_not_fully_verified":
+        raise RuntimeError("Publication not fully verified; inspect run_metrics.json before retrying")
 
 
 if __name__ == "__main__":

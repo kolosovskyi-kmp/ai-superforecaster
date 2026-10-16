@@ -4,16 +4,17 @@
 > 2026 FutureEval tournament. It keeps the official template as a compatibility
 > fallback for non-binary questions.
 
-## Our ensemble: safe first run
+## Our ensemble: setup and evidence
 
-The binary forecaster runs four independent roles: base-rate, inside-view,
+The binary forecaster runs four roles sharing one model and research packet: base-rate, inside-view,
 red-team, and resolution-auditor. Their forecasts are combined in log-odds
 space and conservatively shrunk toward 50%. This is deliberately transparent:
 each saved report contains every component estimate and the final calculation.
 
 Safety defaults:
 
-- `PUBLISH_TO_METACULUS=false`, so forecasts are generated but not submitted.
+- `PUBLISH_TO_METACULUS=false`: tournament runs discover questions without model calls.
+  Practice forecasts use the separate `test_questions` mode.
 - `MAX_QUESTIONS_PER_RUN=1`, so a first live run cannot process the whole queue.
 - Scheduled GitHub workflows remain idle until the repository variable
   `BOT_ENABLED` is set to `true`.
@@ -31,6 +32,11 @@ name alone does not activate search. The bot rejects empty/truncated research,
 responses without API-supplied URL citations, and responses reporting zero searches.
 It never falls back to ungrounded research after a search failure.
 
+Before/after OpenRouter account balances and publication checks are saved in
+`forecast_reports/run_metrics.json`. The observed charge delta may lag billing or
+include other users of the same key; it is not a precise per-question invoice.
+The effective sponsored budget takes priority over a misleading `usage=0`.
+
 API-reported research charges, generation IDs, and source URLs are saved in
 `forecast_reports/research_usage.jsonl` (included in the existing report artifact).
 These charges cover research only. Forecasting-tools' estimated run total does
@@ -40,14 +46,15 @@ Run the offline search checks with
 
 Recommended rollout:
 
-1. Start a **new** run via **Actions → Test Bot → Run workflow**, selecting `main`
-   and one question. Re-running an old run uses its old commit. Inspect the uploaded
+1. Use only **Actions → Test Bot → Run workflow** for technical previews, selecting `main`
+   and practice questions. Do not preview live tournament questions. Re-running an old run uses its old commit. Inspect the uploaded
    logs/reports for `Sources returned by the search API` and research usage.
 2. Run locally with `poetry run python superforecaster.py --mode test_questions`.
 3. When the output is satisfactory, set repository variable
    `PUBLISH_TO_METACULUS=true` and manually run the tournament workflow once.
 4. Only after verifying the posted forecasts, set `BOT_ENABLED=true` to enable
-   the 20-minute schedule.
+   the nominal 20-minute schedule. GitHub can delay or drop scheduled events;
+   see [operations and independent clock setup](ops/README.md).
 
 Model and calibration variables are documented in `.env.template`. Do not tune
 `CALIBRATION_SHRINKAGE` on unresolved questions; update it only from a held-out
