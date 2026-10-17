@@ -5,8 +5,8 @@ workers_dev = false
 preview_urls = false
 
 [vars]
-# Enable only after adding the restricted GITHUB_TOKEN secret.
-ENABLED = "false"
+# Restricted GITHUB_TOKEN secret is configured in Cloudflare.
+ENABLED = "true"
 
 [triggers]
 crons = ["3,13,23,33,43,53 * * * *"]
