@@ -14,7 +14,7 @@ export async function tick(env, fetcher = fetch, now = Date.now()) {
     "X-GitHub-Api-Version": "2026-03-10",
   };
   const response = await fetcher(`${ENDPOINT}/runs?branch=main&per_page=10`, {
-    headers, signal: AbortSignal.timeout(15000), redirect: "error",
+    headers, signal: AbortSignal.timeout(15000), redirect: "manual",
   });
   if (!response.ok) throw new Error(`Read workflow runs: HTTP ${response.status}`);
   const { workflow_runs: runs } = await response.json();
@@ -34,7 +34,7 @@ export async function tick(env, fetcher = fetch, now = Date.now()) {
   const dispatched = await fetcher(`${ENDPOINT}/dispatches`, {
     method: "POST", headers: { ...headers, "Content-Type": "application/json" },
     body: JSON.stringify({ ref: "main", inputs: { max_questions: "5", trigger_source: "external-clock" } }),
-    signal: AbortSignal.timeout(15000), redirect: "error",
+    signal: AbortSignal.timeout(15000), redirect: "manual",
   });
   if (![200, 204].includes(dispatched.status)) throw new Error(`Dispatch workflow: HTTP ${dispatched.status}`);
   return { status: "dispatched" };

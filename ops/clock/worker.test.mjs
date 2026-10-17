@@ -52,3 +52,20 @@ test("dispatch accepts both supported success response codes", async () => {
 test("HTTP interface cannot trigger any workflow", async () => {
   assert.equal((await worker.fetch()).status, 404);
 });
+
+test("Workers-compatible requests never follow redirects or forward credentials", async () => {
+  const { calls, fetcher } = mock([]);
+  await tick(env, async (url, options) => {
+    assert.equal(options.redirect, "manual");
+    return fetcher(url, options);
+  }, now);
+  assert.equal(calls.length, 2);
+  let count = 0;
+  await assert.rejects(tick(env, async () => {
+    count++;
+    return new Response(null, { status: 302, headers: { Location: "https://example.invalid" } });
+  }, now), /HTTP 302/);
+  assert.equal(count, 1);
+  const redirectDispatch = mock([], 307);
+  await assert.rejects(tick(env, redirectDispatch.fetcher, now), /HTTP 307/);
+});
