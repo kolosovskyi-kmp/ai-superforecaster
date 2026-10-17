@@ -28,6 +28,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         self.env.start()
         self.q = question()
         self.client = MagicMock()
+        self.client.CURRENT_MINIBENCH_ID = "minibench"
         self.client.get_all_open_questions_from_tournament.side_effect = [[self.q], [self.q]]
         self.client.get_question_by_post_id.return_value = SimpleNamespace(**{**vars(self.q), 'already_forecasted': True})
         self.bot = MagicMock()
