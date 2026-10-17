@@ -3,7 +3,10 @@
 Production scope: `fall-futureeval-2026` and `minibench`, bot account ID 308654.
 The sponsored `superforecaster.py` runner refuses the Metaculus Cup mode. Keep the
 separate Cup workflow disabled. The research model, four binary roles, weights,
-log-odds pooling and 0.85 shrinkage have not changed in this operations update.
+log-odds pooling and 0.85 shrinkage have not changed in these operations updates.
+The binary parser accepts one explicit final `Probability: ZZ%` label even when
+it ends the final sentence; it still rejects ranges, missing units and multiple
+final labels. This does not ask another LLM to infer or alter the probability.
 `forecasting-tools` is pinned to the already-used 0.2.92 for a stable baseline.
 
 ## What each run proves
@@ -11,6 +14,11 @@ log-odds pooling and 0.85 shrinkage have not changed in this operations update.
 1. A standard-library preflight reads authenticated Metaculus history and the
    OpenRouter key budget. It costs no LLM credits. If no open question needs a
    forecast, it skips installing the forecasting dependencies and running models.
+   Fall and MiniBench reads are isolated: a failing series is marked **unknown**,
+   while available questions from the other series proceed. Read-only requests
+   retry transient HTTP/network failures up to three attempts. Identity failure
+   or failure of both projects still stops the run. Full audits fail visibly on
+   incomplete coverage; preflight warns without blocking healthy projects.
 2. Only `PUBLISH_TO_METACULUS=true` enables tournament model calls. Technical
    dry runs must use the testing area; do not inspect active tournament predictions
    and then modify the bot in response to those predictions.

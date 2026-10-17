@@ -3,7 +3,7 @@ name: Bot offline checks
 on:
   workflow_dispatch:
   push:
-    branches: [main, improve/coverage-2026-10-16]
+    branches: [main, improve/coverage-2026-10-16, fix/partial-outages-2026-10-17]
   pull_request:
     branches: [main]
 

@@ -34,6 +34,7 @@ from bot_helpers import (
 from main import SummerTemplateBot2026
 from operations import budget_delta, question_key, read_budget, save_run, select_questions
 from probability_parsing import parse_final_probability
+from project_discovery import discover_open_questions
 from web_research import DEFAULT_RESEARCHER_MODEL, search_web
 
 dotenv.load_dotenv()
@@ -243,12 +244,10 @@ async def run(mode: Literal["tournament", "metaculus_cup", "test_questions"]) ->
         },
     )
     client = MetaculusClient()
+    discovery_errors = []
     if mode == "tournament":
-        questions = client.get_all_open_questions_from_tournament(
-            "fall-futureeval-2026"
-        )
-        questions += client.get_all_open_questions_from_tournament(
-            client.CURRENT_MINIBENCH_ID
+        questions, discovery_errors = discover_open_questions(
+            client, ["fall-futureeval-2026", client.CURRENT_MINIBENCH_ID]
         )
         url = "https://www.metaculus.com/tournament/fall-futureeval-2026/"
     else:
@@ -267,6 +266,7 @@ async def run(mode: Literal["tournament", "metaculus_cup", "test_questions"]) ->
         "started_utc": datetime.now(timezone.utc).isoformat(),
         "commit": os.getenv("GITHUB_SHA"), "run_id": os.getenv("GITHUB_RUN_ID"),
         "mode": mode, "publishing": publish, "selection": selection,
+        "discovery_errors": discovery_errors,
         "strategy": "four-role-log-odds-v1",
         "forecast_model": os.getenv("FORECAST_MODEL", "openrouter/openai/gpt-5-mini"),
         "research_model": os.getenv("RESEARCHER_MODEL", DEFAULT_RESEARCHER_MODEL),
@@ -287,6 +287,8 @@ async def run(mode: Literal["tournament", "metaculus_cup", "test_questions"]) ->
         metrics["status"] = "no_eligible_questions"
         save_run(metrics)
         print_run_summary_banner([], will_publish=publish, tournament_url=url)
+        if discovery_errors:
+            raise RuntimeError("No eligible questions in available projects; coverage of other projects is unknown")
         return
 
     metrics["budget_before"] = await asyncio.to_thread(read_budget)

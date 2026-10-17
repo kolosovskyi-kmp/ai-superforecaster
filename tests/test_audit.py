@@ -48,3 +48,43 @@ class AuditTests(unittest.TestCase):
                  patch.object(audit_bot, 'get_json', side_effect=[{'data': {}}, {'id': 123}]), redirect_stdout(StringIO()):
                 with self.assertRaises(SystemExit):
                     audit_bot.main(preflight=True)
+
+    def test_preflight_continues_if_one_series_is_unavailable(self):
+        now = datetime.now(timezone.utc)
+        post = {'id': 1, 'question': {'id': 11, 'status': 'open',
+                'open_time': (now-timedelta(minutes=1)).isoformat(),
+                'scheduled_close_time': (now+timedelta(hours=2)).isoformat()}}
+        for responses in [[[post], [], RuntimeError()], [RuntimeError(), [post], []]]:
+            with tempfile.TemporaryDirectory() as folder:
+                with patch.dict(os.environ, {'BOT_AUDIT_OUTPUT': str(Path(folder)/'audit.json'), 'GITHUB_OUTPUT': '', 'GITHUB_STEP_SUMMARY': ''}), \
+                     patch.object(audit_bot, 'get_json', side_effect=[{'data': {}}, {'id': 308654}]), \
+                     patch.object(audit_bot, 'list_posts', side_effect=responses), redirect_stdout(StringIO()):
+                    report = audit_bot.main(preflight=True)
+                self.assertEqual(len(report['pending_open']), 1)
+                self.assertEqual(report['errors'][0]['area'], 'metaculus_project')
+
+    def test_both_series_unavailable_fails_preflight(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.dict(os.environ, {'BOT_AUDIT_OUTPUT': str(Path(folder)/'audit.json'), 'GITHUB_OUTPUT': '', 'GITHUB_STEP_SUMMARY': ''}), \
+                 patch.object(audit_bot, 'get_json', side_effect=[{'data': {}}, {'id': 308654}]), \
+                 patch.object(audit_bot, 'list_posts', side_effect=RuntimeError()), redirect_stdout(StringIO()):
+                with self.assertRaises(SystemExit):
+                    audit_bot.main(preflight=True)
+
+    def test_transient_read_error_is_retried_but_auth_failure_is_not(self):
+        from io import BytesIO
+        from urllib.error import HTTPError
+        transient = HTTPError('https://www.metaculus.com/api/posts/', 503, 'Unavailable', {}, None)
+        with patch.object(audit_bot, 'urlopen', side_effect=[transient, BytesIO(b'{"results": []}')]) as request, \
+             patch.object(audit_bot.time, 'sleep') as sleep:
+            self.assertEqual(audit_bot.get_json('https://www.metaculus.com/api/posts/', 'fake', 'Token'), {'results': []})
+            self.assertEqual(request.call_count, 2)
+            sleep.assert_called_once()
+        denied = HTTPError('https://www.metaculus.com/api/posts/', 401, 'Denied', {}, None)
+        with patch.object(audit_bot, 'urlopen', side_effect=denied) as request, \
+             patch.object(audit_bot.time, 'sleep') as sleep:
+            with self.assertRaises(RuntimeError) as context:
+                audit_bot.get_json('https://www.metaculus.com/api/posts/', 'fake', 'Token')
+            self.assertEqual(context.exception.http_status, 401)
+            request.assert_called_once()
+            sleep.assert_not_called()

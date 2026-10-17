@@ -63,6 +63,13 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report['selection']['duplicates_removed'], 1)
         self.assertEqual(report['status'], 'completed')
 
+    async def test_minibench_failure_does_not_block_available_fall_forecast(self):
+        self.client.get_all_open_questions_from_tournament.side_effect = [[self.q], RuntimeError('synthetic unavailable series')]
+        await superforecaster.run('tournament')
+        self.bot.forecast_questions.assert_awaited_once_with([self.q], return_exceptions=True)
+        self.assertEqual(self.metrics()['verified_posted'], 1)
+        self.assertEqual(len(self.metrics()['discovery_errors']), 1)
+
     async def test_disabled_publishing_never_previews_a_live_question(self):
         os.environ['PUBLISH_TO_METACULUS'] = 'false'
         await superforecaster.run('tournament')

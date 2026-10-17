@@ -5,8 +5,8 @@ on:
   schedule:
     - cron: '17 6 * * *'
   push:
-    branches: [improve/coverage-2026-10-16]
-    paths: [audit_bot.py, operations.py, .github/workflows/audit_bot.yaml]
+    branches: [improve/coverage-2026-10-16, fix/partial-outages-2026-10-17]
+    paths: [audit_bot.py, operations.py, project_discovery.py, .github/workflows/audit_bot.yaml]
 
 permissions:
   contents: read

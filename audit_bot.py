@@ -3,10 +3,11 @@
 import argparse
 import json
 import os
+import time
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -19,11 +20,19 @@ def get_json(url, token, scheme):
         raise ValueError("Audit request outside the expected API")
     request = Request(url, headers={"Authorization": f"{scheme} {token}",
                                    "Accept": "application/json"}, method="GET")
-    try:
-        with urlopen(request, timeout=30) as response:
-            return json.load(response)
-    except HTTPError as exc:
-        raise RuntimeError(f"Read-only API request returned HTTP {exc.code}") from None
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=15) as response:
+                return json.load(response)
+        except HTTPError as exc:
+            if exc.code not in {429, 500, 502, 503, 504} or attempt == 2:
+                error = RuntimeError(f"Read-only API request returned HTTP {exc.code}")
+                error.http_status = exc.code
+                raise error from None
+        except (URLError, TimeoutError):
+            if attempt == 2:
+                raise RuntimeError("Read-only API unavailable after three attempts") from None
+        time.sleep((1, 3)[attempt])  # GET only; never retry a forecast submission.
 
 
 def list_posts(project, token, user_id=None):
@@ -96,22 +105,30 @@ def main(preflight=False):
             raise ValueError("Token belongs to a different bot; coverage audit stopped")
         report["projects"] = {}
         for project in ("fall-futureeval-2026", "minibench"):
-            posts = list_posts(project, token)
-            predicted = list_posts(project, token, user["id"])
-            predicted_ids = {post["id"] for post in predicted}
-            rows = question_rows(posts, predicted_ids)
-            missing_closed = [row for row in rows if not row["forecasted"]
-                              and row["status"] in {"closed", "resolved"}
-                              and not row["practice_title"]]
-            report["projects"][project] = {
-                "listed_posts": len(posts), "forecasted_posts": len(predicted_ids),
-                "listed_questions": len(rows),
-                "forecasted_questions": sum(row["forecasted"] for row in rows),
-                "status_counts": dict(Counter(row["status"] for row in rows)),
-                "missing_closed_nonpractice_title_count": len(missing_closed),
-                "missing_closed_post_ids": sorted({row["post_id"] for row in missing_closed}),
-                "questions": rows,
-            }
+            try:
+                posts = list_posts(project, token)
+                predicted = list_posts(project, token, user["id"])
+                predicted_ids = {post["id"] for post in predicted}
+                rows = question_rows(posts, predicted_ids)
+                missing_closed = [row for row in rows if not row["forecasted"]
+                                  and row["status"] in {"closed", "resolved"}
+                                  and not row["practice_title"]]
+                report["projects"][project] = {
+                    "listed_posts": len(posts), "forecasted_posts": len(predicted_ids),
+                    "listed_questions": len(rows),
+                    "forecasted_questions": sum(row["forecasted"] for row in rows),
+                    "status_counts": dict(Counter(row["status"] for row in rows)),
+                    "missing_closed_nonpractice_title_count": len(missing_closed),
+                    "missing_closed_post_ids": sorted({row["post_id"] for row in missing_closed}),
+                    "questions": rows,
+                }
+            except Exception as exc:
+                report["errors"].append({
+                    "area": "metaculus_project", "project": project,
+                    "error_type": type(exc).__name__,
+                    "http_status": getattr(exc, "http_status", None),
+                })
+                print(f"::warning::Coverage of {project} is unknown; other projects continue")
     except Exception as exc:
         report["errors"].append({"area": "metaculus", "error_type": type(exc).__name__})
 
@@ -154,7 +171,8 @@ def main(preflight=False):
             file.write(f"has_pending={'true' if pending else 'false'}\n")
             file.write(f"pending_count={len(pending)}\n")
     metaculus_failed = any(error["area"] == "metaculus" for error in report["errors"])
-    if metaculus_failed or (not preflight and report["errors"]):
+    no_project_succeeded = not report.get("projects")
+    if metaculus_failed or no_project_succeeded or (not preflight and report["errors"]):
         raise SystemExit(1)
     if not preflight and recent_missing:
         print("::warning::Questions have closed without a forecast since the monitoring baseline")

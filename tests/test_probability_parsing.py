@@ -23,6 +23,21 @@ class ProbabilityParsingTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual(parse_final_probability(text), 0.171)
 
+    def test_explicit_final_label_at_end_of_sentence_is_accepted(self):
+        self.assertEqual(parse_final_probability(
+            "The evidence is limited. Probability: 12%"
+        ), 0.12)
+        self.assertEqual(parse_final_probability(
+            "Prior was 50%; final assessment. **Probability: 17.1%**."
+        ), 0.171)
+
+    def test_multiple_final_labels_and_trailing_qualifiers_stay_ambiguous(self):
+        for text in ["Probability: 12% or Probability: 15%",
+                     "Conclusion. Probability: 12–15%",
+                     "Conclusion. Probability: 12%, perhaps higher"]:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                parse_final_probability(text)
+
     def test_decimal_comma_and_precision(self):
         self.assertEqual(parse_final_probability("Probability: 17,125%"), 0.17125)
         self.assertEqual(parse_final_probability("Probability: 0.171%"), 0.00171)
