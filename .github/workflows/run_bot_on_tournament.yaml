@@ -1,6 +1,16 @@
 name: Forecast on new AI tournament questions
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - superforecaster.py
+      - main.py
+      - probability_parsing.py
+      - project_discovery.py
+      - operations.py
+      - audit_bot.py
+      - .github/workflows/run_bot_on_tournament.yaml
   workflow_dispatch:
     inputs:
       max_questions:

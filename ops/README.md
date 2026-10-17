@@ -11,7 +11,10 @@ final labels. This does not ask another LLM to infer or alter the probability.
 
 ## What each run proves
 
-1. A standard-library preflight reads authenticated Metaculus history and the
+1. Publishing-code updates on `main` also trigger the existing production job
+   when `BOT_ENABLED=true`, so a deployed fix can check pending questions without
+   waiting for the next cron event. This is a normal production run, not a live
+   prediction preview. A standard-library preflight reads authenticated Metaculus history and the
    OpenRouter key budget. It costs no LLM credits. If no open question needs a
    forecast, it skips installing the forecasting dependencies and running models.
    Fall and MiniBench reads are isolated: a failing series is marked **unknown**,
