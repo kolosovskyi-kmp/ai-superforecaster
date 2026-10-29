@@ -59,6 +59,27 @@ class WebResearchTests(unittest.TestCase):
         self.assertEqual(self.usage_record()["cost_usd"], 0.012)
         self.assertNotIn("test-key", json.dumps(self.usage_record()))
 
+    def test_reasoning_is_bounded_and_original_prompt_preserved(self):
+        self.run_research()
+        body = json.loads(self.urlopen.call_args.args[0].data)
+        self.assertEqual(body["reasoning"], {"effort": "low"})
+        self.assertEqual(body["max_tokens"], 6000)
+        self.assertEqual(body["messages"][-1]["content"], "Research this question")
+        self.assertIn("conflicting evidence", body["messages"][0]["content"])
+        self.assertEqual(self.urlopen.call_count, 1)
+
+    def test_reasoning_exhaustion_is_logged_and_blocked_without_retry(self):
+        self.result["choices"][0]["finish_reason"] = "length"
+        self.result["choices"][0]["message"]["content"] = ""
+        self.result["usage"]["completion_tokens_details"] = {"reasoning_tokens": 6000}
+        with self.assertRaisesRegex(RuntimeError, "truncated"):
+            self.run_research()
+        record = self.usage_record()
+        self.assertEqual(record["reasoning_tokens"], 6000)
+        self.assertEqual(record["finish_reason"], "length")
+        self.assertEqual(record["cost_usd"], 0.012)
+        self.assertEqual(self.urlopen.call_count, 1)
+
     def test_model_written_url_does_not_substitute_for_api_citations(self):
         self.result["choices"][0]["message"] = {
             "content": "Sources: https://example.org/observations"

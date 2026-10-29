@@ -39,13 +39,25 @@ def _search_web(prompt: str, *, model: str, question_url: str) -> str:
 
     payload = {
         "model": model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [
+            {"role": "system", "content": (
+                "Produce a complete, concise evidence brief (target 800 words). "
+                "Prioritize resolution criteria, dated observations, base rates, "
+                "conflicting evidence and uncertainties. Cite retrieved sources. "
+                "Do not repeat the question or write a long narrative. "
+                "Finish the brief within the output budget."
+            )},
+            {"role": "user", "content": prompt},
+        ],
         # OpenRouter executes this server tool; no client-side tool loop is needed.
         "tools": [{"type": "openrouter:web_search", "parameters": {
             "engine": "native", "max_results": 5, "max_uses": 2,
         }}],
         "max_tool_calls": 2,
         "max_tokens": 6000,
+        # Research gathers evidence; forecasting reasoning happens downstream.
+        # Reasoning shares the output budget, so bound it explicitly.
+        "reasoning": {"effort": "low"},
         # Stay on a provider allowed by the sponsored key; do not route elsewhere.
         "provider": {"only": ["openai"], "allow_fallbacks": False},
         "stream": False,
@@ -100,6 +112,8 @@ def _search_web(prompt: str, *, model: str, question_url: str) -> str:
         "cost_usd": usage.get("cost"),
         "prompt_tokens": usage.get("prompt_tokens"),
         "completion_tokens": usage.get("completion_tokens"),
+        "reasoning_tokens": (usage.get("completion_tokens_details") or {}).get("reasoning_tokens"),
+        "finish_reason": choice.get("finish_reason"),
         "web_search_requests": searches,
         "source_urls": list(sources),
     }
@@ -110,10 +124,10 @@ def _search_web(prompt: str, *, model: str, question_url: str) -> str:
         file.write(json.dumps(record, ensure_ascii=False) + "\n")
     logger.info("OpenRouter research usage (research only): %s", json.dumps(record))
 
-    if not isinstance(text, str) or not text.strip():
-        raise RuntimeError("Web research returned no text; forecast blocked")
     if choice.get("finish_reason") == "length":
         raise RuntimeError("Web research was truncated; forecast blocked")
+    if not isinstance(text, str) or not text.strip():
+        raise RuntimeError("Web research returned no text; forecast blocked")
     if not sources or searches == 0:
         raise RuntimeError(
             "Web research returned no verified search evidence/API citations; "
