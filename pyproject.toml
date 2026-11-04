@@ -16,6 +16,7 @@ openai = "^2.0.0"
 python-dotenv = "^1.0.1"
 forecasting-tools = "0.2.92"
 litellm = "1.103.1"
+pyarrow = "26.0.0"
 
 
 [tool.poetry.group.integrations]
