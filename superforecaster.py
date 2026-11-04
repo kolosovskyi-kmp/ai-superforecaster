@@ -162,7 +162,9 @@ class EnsembleFutureEvalBot(SummerTemplateBot2026):
             Give a compact rationale. Explicitly state your prior, strongest evidence,
             strongest counterargument, and what would change your estimate. Avoid 0% and
             100% unless the outcome is logically settled.
-            End with exactly: Probability: ZZ%
+            Do not start with a short answer or put the final Probability label before the rationale.
+            Write all analysis first. The final non-empty line MUST be exactly:
+            Probability: ZZ%
             Use one standalone final line with a single percentage; decimals are
             allowed. Do not give a range or add text after that final line.
             """
