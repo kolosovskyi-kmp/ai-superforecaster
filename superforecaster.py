@@ -159,7 +159,10 @@ class EnsembleFutureEvalBot(SummerTemplateBot2026):
             Research packet: {research}
             Today: {datetime.now().strftime('%Y-%m-%d')}
 
-            Give a compact rationale. Explicitly state your prior, strongest evidence,
+            Keep your entire response under 250 words. Budget space for the final probability line.
+            Use at most four short bullets; omit long calculations and repeated scenarios.
+            If space is running short, finish the rationale immediately and write the final line.
+            Explicitly state your prior, strongest evidence,
             strongest counterargument, and what would change your estimate. Avoid 0% and
             100% unless the outcome is logically settled.
             Do not start with a short answer or put the final Probability label before the rationale.
